@@ -7,7 +7,7 @@ Custom element classes related to text runs (CT_R).
 from ..ns import qn
 from ..simpletypes import ST_BrClear, ST_BrType
 from ..xmlchemy import (
-    BaseOxmlElement, OptionalAttribute, ZeroOrMore, ZeroOrOne
+    BaseOxmlElement, OxmlElement, OptionalAttribute, ZeroOrMore, ZeroOrOne
 )
 
 
@@ -33,6 +33,14 @@ class CT_R(BaseOxmlElement):
     def _insert_rPr(self, rPr):
         self.insert(0, rPr)
         return rPr
+
+    def add_r_before(self):
+        """
+        Return a new ``<w:r>`` element inserted directly prior to this one.
+        """
+        new_r = OxmlElement('w:r')
+        self.addprevious(new_r)
+        return new_r
 
     def add_t(self, text):
         """

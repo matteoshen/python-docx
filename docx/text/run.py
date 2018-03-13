@@ -181,6 +181,28 @@ class Run(Parented):
     def underline(self, value):
         self.font.underline = value
 
+    def insert_run_before(self, text=None, style=None):
+        """
+        Return a newly created run, inserted directly before this
+        run. If *text* is supplied, the new run contains that
+        text. If *style* is provided, that style is assigned
+        to the new run.
+        """
+        run = self._insert_run_before()
+        if text:
+            run.add_run(text)
+        if style is not None:
+            run.style = style
+        return run
+
+    def _insert_run_before(self):
+        """
+        Return a newly created paragraph, inserted directly before this
+        paragraph.
+        """
+        p = self._r.add_r_before()
+        return Run(p, self._parent)
+
 
 class _Text(object):
     """
