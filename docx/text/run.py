@@ -203,6 +203,13 @@ class Run(Parented):
         p = self._r.add_r_before()
         return Run(p, self._parent)
 
+    def delete_run(self):
+        """
+        Remove run
+        """
+        r = self._element
+        r.getparent().remove(r)
+        r._r = r._element = None
 
 class _Text(object):
     """
