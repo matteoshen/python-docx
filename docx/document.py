@@ -301,23 +301,46 @@ class Document(ElementProxy):
             head = r.text[:start_pos_relative]
             mid = r.text[start_pos_relative:end_pos_relative]
             tail = r.text[end_pos_relative:]
+            # head
             if head>'':
-                r.insert_run_before(text= head,style=r.style)
+                r.insert_run_before(text= head,
+                                    style=r.style,
+                                    bold=r.font.bold,
+                                    cs_bold=r.font.cs_bold,
+                                    italic=r.font.italic,
+                                    size=r.font.size,
+                                    underline=r.font.underline)
                 series_tmp = df.loc[(df['paragraph_ID']==df.loc[idx,'paragraph_ID'])&
                                     (df.index>idx),
                                     'run_ID']
                 df.loc[(df['paragraph_ID']==df.loc[idx,'paragraph_ID'])&
                     (df.index>idx),
                     'run_ID'] = [i+1 for i in series_tmp]
-            r.insert_run_before(text=mid,style=r.style,highlight_color=highlight_color)
+            # mid
+            r.insert_run_before(text=mid,
+                                style=r.style,
+                                highlight_color=highlight_color,                                    
+                                bold=r.font.bold,
+                                cs_bold=r.font.cs_bold,
+                                italic=r.font.italic,
+                                size=r.font.size,
+                                underline=r.font.underline)
+            # tail
             if tail>'':
-                r.insert_run_before(text=tail,style=r.style)
+                r.insert_run_before(text= tail,
+                                    style=r.style,
+                                    bold=r.font.bold,
+                                    cs_bold=r.font.cs_bold,
+                                    italic=r.font.italic,
+                                    size=r.font.size,
+                                    underline=r.font.underline)
                 series_tmp = df.loc[(df['paragraph_ID']==df.loc[idx,'paragraph_ID'])&
                                     (df.index>idx),
                                     'run_ID']
                 df.loc[(df['paragraph_ID']==df.loc[idx,'paragraph_ID'])&
                     (df.index>idx),
                     'run_ID'] = [i+1 for i in series_tmp]
+            # delete run
             r.delete_run()
         # table
         if blocktype=='table':
@@ -329,8 +352,15 @@ class Document(ElementProxy):
             head = r.text[:start_pos_relative]
             mid = r.text[start_pos_relative:end_pos_relative]
             tail = r.text[end_pos_relative:]
+            # head
             if head>'':
-                r.insert_run_before(text= head,style=r.style)
+                r.insert_run_before(text= head,
+                                    style=r.style,
+                                    bold=r.font.bold,
+                                    cs_bold=r.font.cs_bold,
+                                    italic=r.font.italic,
+                                    size=r.font.size,
+                                    underline=r.font.underline)
                 series_tmp = df.loc[(df['table_ID']==df.loc[idx,'table_ID'])&
                                     (df['row_ID']==df.loc[idx,'row_ID'])&
                                     (df['cell_ID']==df.loc[idx,'cell_ID'])&
@@ -343,9 +373,24 @@ class Document(ElementProxy):
                         (df['paragraph_ID']==df.loc[idx,'paragraph_ID'])&
                         (df.index>idx),
                         'run_ID']= [i+1 for i in series_tmp]
-            r.insert_run_before(text=mid,style=r.style,highlight_color=highlight_color)
+            # mid
+            r.insert_run_before(text=mid,
+                                style=r.style,
+                                highlight_color=highlight_color,                                    
+                                bold=r.font.bold,
+                                cs_bold=r.font.cs_bold,
+                                italic=r.font.italic,
+                                size=r.font.size,
+                                underline=r.font.underline)
+            # tail
             if tail>'':
-                r.insert_run_before(text=tail,style=r.style)
+                r.insert_run_before(text= tail,
+                                    style=r.style,
+                                    bold=r.font.bold,
+                                    cs_bold=r.font.cs_bold,
+                                    italic=r.font.italic,
+                                    size=r.font.size,
+                                    underline=r.font.underline)
                 series_tmp = df.loc[(df['table_ID']==df.loc[idx,'table_ID'])&
                                     (df['row_ID']==df.loc[idx,'row_ID'])&
                                     (df['cell_ID']==df.loc[idx,'cell_ID'])&
@@ -358,11 +403,17 @@ class Document(ElementProxy):
                         (df['paragraph_ID']==df.loc[idx,'paragraph_ID'])&
                         (df.index>idx),
                         'run_ID']= [i+1 for i in series_tmp]
+            # delete run
             r.delete_run()
         
         return df
 
     def highlight(self,start_pos,end_pos,highlight_color):
+        """
+        highlight from @start_pos to @end_pos with color @highlight_color
+        return Document object
+        """
+
         start_pos -=1
         end_pos -=1
         doc = Document(self.element,self.part)

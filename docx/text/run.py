@@ -181,7 +181,9 @@ class Run(Parented):
     def underline(self, value):
         self.font.underline = value
 
-    def insert_run_before(self, text=None, style=None, highlight_color=None):
+    def insert_run_before(self, text=None, style=None, highlight_color=None,
+                            bold=None, italic=None, cs_bold=None,
+                            underline=None, size=None):
         """
         Return a newly created run, inserted directly before this
         run. If *text* is supplied, the new run contains that
@@ -194,8 +196,16 @@ class Run(Parented):
             run.add_text(text)
         if style is not None:
             run.style = style
-        if highlight_color is not None:
+        if highlight_color:
             run.font.highlight_color = highlight_color
+        if italic:
+            run.font.italic = italic
+        if underline:
+            run.font.underline = underline
+        if size:
+            run.font.size = size   
+        if cs_bold:
+            run.font.cs_bold = cs_bold                                                
         return run
 
     def _insert_run_before(self):
