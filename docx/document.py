@@ -3,17 +3,24 @@
 """
 |Document| and closely related objects
 """
-
 from __future__ import (
     absolute_import, division, print_function, unicode_literals
 )
+
+from pandas import DataFrame
+from pandas import concat
+from numpy import arange
+from numpy import isnan
 
 from .blkcntnr import BlockItemContainer
 from .enum.section import WD_SECTION
 from .enum.text import WD_BREAK
 from .section import Section, Sections
 from .shared import ElementProxy, Emu
-
+from .oxml.table import CT_Tbl
+from .oxml.text.paragraph import CT_P
+from .table import _Cell, Table
+from .text.paragraph import Paragraph
 
 class Document(ElementProxy):
     """
@@ -195,7 +202,192 @@ class Document(ElementProxy):
             self.__body = _Body(self._element.body, self)
         return self.__body
 
+    def iter_block_items(self):
+        """
+        Yield each paragraph and table child within *parent*, in document order.
+        Each returned value is an instance of either Table or Paragraph. *parent*
+        would most commonly be a reference to a main Document object, but
+        also works for a _Cell object, which itself can contain paragraphs and tables.
+        """
+        if isinstance(self, Document):
+            parent_elm = self.element.body
+        elif isinstance(self, _Cell):
+            parent_elm = self._tc
+        else:
+            raise ValueError("something's not right")
 
+        for child in parent_elm.iterchildren():
+            if isinstance(child, CT_P):
+                yield Paragraph(child, self)
+            elif isinstance(child, CT_Tbl):
+                yield Table(child, self)
+
+
+    def parse(self):
+        """
+        Parse a Document into pandas.DataFrame.
+        if the document does NOT contain any tables, the return DataFrame's columns will be:
+            ['string','block_ID','paragraph_ID','run_ID']
+            each ID starts with 0
+        if the document DOES contain tables, in this case the return DataFrame's columns will be:
+            ['string','block_ID','table_ID','row_ID',
+             'cell_ID','paragraph_ID','run_ID']
+            each ID starts with 0
+        """
+        iterator = self.iter_block_items()
+        block_count = 0
+        paragraph_count = 0
+        table_count = 0
+        df = DataFrame()
+        for i in iterator:
+            if isinstance(i,Paragraph):
+                l_runText = [r.text for r in i.runs]
+                l_runID = arange(len(l_runText))
+                df_tmp = DataFrame({'string':l_runText,
+                                    'run_ID':l_runID},index=l_runID)
+                df_tmp['block_ID'] = block_count
+                df_tmp['paragraph_ID'] = paragraph_count
+                df = concat([df,df_tmp],ignore_index=True)
+                paragraph_count += 1
+                block_count += 1
+            if isinstance(i,Table):
+                row_count = 0
+                for row in i.rows:
+                    cell_count = 0
+                    for cell in row.cells:
+                        cell_para_count = 0
+                        for p in cell.paragraphs:
+                            l_runText = [r.text for r in p.runs]
+                            l_runID = arange(len(l_runText))            
+                            df_tmp = DataFrame({'string':l_runText,
+                                                'run_ID':l_runID},index=l_runID)
+                            df_tmp['block_ID'] = block_count
+                            df_tmp['table_ID'] = table_count
+                            df_tmp['row_ID'] = row_count
+                            df_tmp['cell_ID'] = cell_count
+                            df_tmp['paragraph_ID'] = cell_para_count
+                            df = concat([df,df_tmp],ignore_index=True)
+                            cell_para_count += 1
+                        cell_count += 1
+                    row_count += 1
+                table_count += 1
+                block_count += 1
+        
+        return df
+
+    def _highlight_basic(self,
+                        df,
+                        idx,
+                        start_pos_relative,
+                        end_pos_relative,
+                        highlight_color):
+        """
+        Inner method: HighLight doc with fixed
+            DataFrame, idx, start_pos(relative), end_pos(relative) and fixed color
+        """
+        # paragraph or table
+        blocktype = None
+        if 'table_ID' not in df.columns:
+            blocktype = 'paragraph'
+        elif isnan(df.loc[idx,'table_ID']):
+            blocktype = 'paragraph'
+        else:        
+            blocktype = 'table'
+            
+        # paragraph
+        if blocktype=='paragraph':
+            p = self.paragraphs[df.loc[idx,'paragraph_ID']]
+            r = p.runs[df.loc[idx,'run_ID']]
+            head = r.text[:start_pos_relative]
+            mid = r.text[start_pos_relative:end_pos_relative]
+            tail = r.text[end_pos_relative:]
+            if head>'':
+                r.insert_run_before(text= head,style=r.style)
+                series_tmp = df.loc[(df['paragraph_ID']==df.loc[idx,'paragraph_ID'])&
+                                    (df.index>idx),
+                                    'run_ID']
+                df.loc[(df['paragraph_ID']==df.loc[idx,'paragraph_ID'])&
+                    (df.index>idx),
+                    'run_ID'] = [i+1 for i in series_tmp]
+            r.insert_run_before(text=mid,style=r.style,highlight_color=highlight_color)
+            if tail>'':
+                r.insert_run_before(text=tail,style=r.style)
+                series_tmp = df.loc[(df['paragraph_ID']==df.loc[idx,'paragraph_ID'])&
+                                    (df.index>idx),
+                                    'run_ID']
+                df.loc[(df['paragraph_ID']==df.loc[idx,'paragraph_ID'])&
+                    (df.index>idx),
+                    'run_ID'] = [i+1 for i in series_tmp]
+            r.delete_run()
+        # table
+        if blocktype=='table':
+            table = self.tables[int(df.loc[idx,'table_ID'])]
+            row = table.rows[int(df.loc[idx,'row_ID'])]
+            cell = row.cells[int(df.loc[idx,'cell_ID'])]
+            p = cell.paragraphs[int(df.loc[idx,'paragraph_ID'])]
+            r = p.runs[int(df.loc[idx,'run_ID'])]
+            head = r.text[:start_pos_relative]
+            mid = r.text[start_pos_relative:end_pos_relative]
+            tail = r.text[end_pos_relative:]
+            if head>'':
+                r.insert_run_before(text= head,style=r.style)
+                series_tmp = df.loc[(df['table_ID']==df.loc[idx,'table_ID'])&
+                                    (df['row_ID']==df.loc[idx,'row_ID'])&
+                                    (df['cell_ID']==df.loc[idx,'cell_ID'])&
+                                    (df['paragraph_ID']==df.loc[idx,'paragraph_ID'])&
+                                    (df.index>idx),
+                                    'run_ID']
+                df.loc[(df['table_ID']==df.loc[idx,'table_ID'])&
+                        (df['row_ID']==df.loc[idx,'row_ID'])&
+                        (df['cell_ID']==df.loc[idx,'cell_ID'])&
+                        (df['paragraph_ID']==df.loc[idx,'paragraph_ID'])&
+                        (df.index>idx),
+                        'run_ID']= [i+1 for i in series_tmp]
+            r.insert_run_before(text=mid,style=r.style,highlight_color=highlight_color)
+            if tail>'':
+                r.insert_run_before(text=tail,style=r.style)
+                series_tmp = df.loc[(df['table_ID']==df.loc[idx,'table_ID'])&
+                                    (df['row_ID']==df.loc[idx,'row_ID'])&
+                                    (df['cell_ID']==df.loc[idx,'cell_ID'])&
+                                    (df['paragraph_ID']==df.loc[idx,'paragraph_ID'])&
+                                    (df.index>idx),
+                                    'run_ID']
+                df.loc[(df['table_ID']==df.loc[idx,'table_ID'])&
+                        (df['row_ID']==df.loc[idx,'row_ID'])&
+                        (df['cell_ID']==df.loc[idx,'cell_ID'])&
+                        (df['paragraph_ID']==df.loc[idx,'paragraph_ID'])&
+                        (df.index>idx),
+                        'run_ID']= [i+1 for i in series_tmp]
+            r.delete_run()
+        
+        return df
+
+    def highlight(self,start_pos,end_pos,highlight_color):
+        start_pos -=1
+        end_pos -=1
+        doc = Document(self.element,self.part)
+        df = self.parse()
+        df['len_string'] = df['string'].apply(lambda x:len(x))
+        df['accum_len_string'] = df['len_string'].cumsum()
+        df['accum_len_string_shift'] = df['accum_len_string'].shift(1)
+        if df.shape[0]>0:
+            df.loc[0,'accum_len_string_shift'] = 0
+
+        coverd_idx = df[(df['accum_len_string']>start_pos)&
+                        (df['accum_len_string_shift']<end_pos)].index
+                        
+        for idx in coverd_idx:
+            start_pos_relative = max(start_pos - df.loc[idx,'accum_len_string_shift'],0)
+            end_pos_relative = min(end_pos - df.loc[idx,'accum_len_string_shift'],
+                                df.loc[idx,'len_string']-1)
+            df =  doc._highlight_basic(df,
+                                        idx,
+                                        int(start_pos_relative),
+                                        int(end_pos_relative)+1,
+                                        highlight_color)
+
+        return doc
+                
 class _Body(BlockItemContainer):
     """
     Proxy for ``<w:body>`` element in this document, having primarily a
