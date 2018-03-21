@@ -21,6 +21,10 @@ from .oxml.table import CT_Tbl
 from .oxml.text.paragraph import CT_P
 from .table import _Cell, Table
 from .text.paragraph import Paragraph
+from .utilities import SPECIAL_SEP
+from .utilities import SPECIALCHARS_CH
+from .utilities import SPECIALCHARS_EN
+from .utilities import rmSpecailChar
 
 class Document(ElementProxy):
     """
@@ -28,13 +32,14 @@ class Document(ElementProxy):
     Use :func:`docx.Document` to open or create a document.
     """
 
-    __slots__ = ('_part', '__body','_dataframe')
+    __slots__ = ('_part', '__body','_dataframe','_dataframe_without_sc')
 
     def __init__(self, element, part):
         super(Document, self).__init__(element)
         self._part = part
         self.__body = None
         self._dataframe = None
+        self._dataframe_without_sc = None
 
     def add_heading(self, text='', level=1):
         """
@@ -114,6 +119,18 @@ class Document(ElementProxy):
         return DataFrame containing block level info
         """
         return self._dataframe
+
+    @property
+    def dataframe_without_sc(self):
+        """
+        return DataFrame containing block level info
+        WITHOUT Special Characters:
+            SPECIALCHARS_EN = r'~!@#$%^&*()_-+={}[]|\`:\"\'<>?/.,;'
+            SPECIALCHARS_CH = r'·~！@#￥%……&*（）——+-={}|【】：“‘；：”’《》，。？、'
+            SPECIAL_SEP = [' ','\n','\t','\u3000']
+        """
+        return self._dataframe_without_sc
+
 
     @property
     def core_properties(self):
@@ -231,7 +248,7 @@ class Document(ElementProxy):
                 yield Table(child, self)
 
 
-    def parse(self):
+    def _parse(self):
         """
         Parse a Document into pandas.DataFrame.
         if the document does NOT contain any tables, the return DataFrame's columns will be:
@@ -425,7 +442,7 @@ class Document(ElementProxy):
         start_pos -=1
         end_pos -=1
         doc = Document(self.element,self.part)
-        df = self.parse()
+        df = self._parse()
         df['len_string'] = df['string'].apply(lambda x:len(x))
         df['accum_len_string'] = df['len_string'].cumsum()
         df['accum_len_string_shift'] = df['accum_len_string'].shift(1)
@@ -446,6 +463,19 @@ class Document(ElementProxy):
                                         highlight_color)
 
         return doc
+
+    def _removeSpecailChar(self,col_name='string'):
+        """
+        从一个self._dataframe中的指定col里移除特殊字符
+        """
+        df_tmp = self._dataframe.copy()
+        df_tmp[col_name] = df_tmp[col_name].apply(rmSpecailChar)
+        df_tmp = df_tmp[df_tmp[col_name]!='']
+        self._dataframe_without_sc = df_tmp.reset_index()
+
+    def parse(self):
+        self._parse()
+        self._removeSpecailChar()
                 
 class _Body(BlockItemContainer):
     """
