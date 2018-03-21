@@ -28,12 +28,13 @@ class Document(ElementProxy):
     Use :func:`docx.Document` to open or create a document.
     """
 
-    __slots__ = ('_part', '__body')
+    __slots__ = ('_part', '__body','_dataframe')
 
     def __init__(self, element, part):
         super(Document, self).__init__(element)
         self._part = part
         self.__body = None
+        self._dataframe = None
 
     def add_heading(self, text='', level=1):
         """
@@ -106,6 +107,13 @@ class Document(ElementProxy):
         table = self._body.add_table(rows, cols, self._block_width)
         table.style = style
         return table
+
+    @property
+    def dataframe(self):
+        """
+        return DataFrame containing block level info
+        """
+        return self._dataframe
 
     @property
     def core_properties(self):
@@ -272,8 +280,8 @@ class Document(ElementProxy):
                     row_count += 1
                 table_count += 1
                 block_count += 1
-        
-        return df
+        # set _dataframe
+        self._dataframe = df
 
     def _highlight_basic(self,
                         df,
