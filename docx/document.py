@@ -455,7 +455,8 @@ class Document(ElementProxy):
         for pos in position_list:
             if nan in pos:
                 continue
-
+            if pos[0]>pos[1]:
+                raise ValueError('end_pos <%i> should be BIGGER than start_pos <%i>'%(int(pos[1]),int(pos[0])))
             # 1-starting
             start_num = pos[0] + 1
             end_num = pos[1] + 1
