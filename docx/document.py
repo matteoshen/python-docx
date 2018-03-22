@@ -446,29 +446,30 @@ class Document(ElementProxy):
         df = self._dataframe
 
         df['len_string'] = df['string'].apply(lambda x:len(x))
-        df['accum_len_string'] = df['len_string'].cumsum()
-        df['accum_len_string_shift'] = df['accum_len_string'].shift(1)
+        df['last_num'] = df['len_string'].cumsum() # last 1-staring num
+        df['first_num'] = df['last_num'].shift(1) + 1 # first 1-starting num
 
         if df.shape[0]>0:
-            df.loc[0,'accum_len_string_shift'] = 0
+            df.loc[0,'first_num'] = 1
 
         for pos in position_list:
             if nan in pos:
                 continue
 
-            start_pos = pos[0]
-            end_pos = pos[1] + 1
-            coverd_idx = df[(df['accum_len_string']>start_pos)&
-                            (df['accum_len_string_shift']<end_pos)].index
+            # 1-starting
+            start_num = pos[0] + 1
+            end_num = pos[1] + 1
+            coverd_idx = df[~(start_num > df['last_num']) & 
+                            ~(end_num < df['first_num'])].index
                             
             for idx in coverd_idx:
-                start_pos_relative = max(start_pos - df.loc[idx,'accum_len_string_shift'],0)
-                end_pos_relative = min(end_pos - df.loc[idx,'accum_len_string_shift'],
-                                    df.loc[idx,'len_string']-1)
+                # 0-starting
+                start_pos_relative = max(start_num - df.loc[idx,'first_num'],0)
+                end_pos_relative = max(end_num - df.loc[idx,'first_num'],0)
                 df = doc._highlight_basic(df,
                                         idx,
                                         int(start_pos_relative),
-                                        int(end_pos_relative)+1,
+                                        int(end_pos_relative) + 1,
                                         highlight_color)
 
         return doc
