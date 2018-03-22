@@ -11,6 +11,7 @@ from pandas import DataFrame
 from pandas import concat
 from numpy import arange
 from numpy import isnan
+from numpy import nan
 
 from .blkcntnr import BlockItemContainer
 from .enum.section import WD_SECTION
@@ -433,31 +434,38 @@ class Document(ElementProxy):
         
         return df
 
-    def highlight(self,start_pos,end_pos,highlight_color):
+    def highlight(self, position_list, highlight_color):
         """
-        highlight from @start_pos to @end_pos with color @highlight_color
+        for each (start_pos, end_pos) in @position_list:
+        highlight from @start_pos(included,0-starting-index) to 
+                        @end_pos with color @highlight_color(included,0-starting-index)
         return Document object
         """
-
-        start_pos -=1
-        end_pos -=1
         doc = Document(self.element,self.part)
         self._parse()
         df = self._dataframe
+
         df['len_string'] = df['string'].apply(lambda x:len(x))
         df['accum_len_string'] = df['len_string'].cumsum()
         df['accum_len_string_shift'] = df['accum_len_string'].shift(1)
+
         if df.shape[0]>0:
             df.loc[0,'accum_len_string_shift'] = 0
 
-        coverd_idx = df[(df['accum_len_string']>start_pos)&
-                        (df['accum_len_string_shift']<end_pos)].index
-                        
-        for idx in coverd_idx:
-            start_pos_relative = max(start_pos - df.loc[idx,'accum_len_string_shift'],0)
-            end_pos_relative = min(end_pos - df.loc[idx,'accum_len_string_shift'],
-                                df.loc[idx,'len_string']-1)
-            df =  doc._highlight_basic(df,
+        for pos in position_list:
+            if nan in pos:
+                continue
+
+            start_pos = pos[0]
+            end_pos = pos[1] + 1
+            coverd_idx = df[(df['accum_len_string']>start_pos)&
+                            (df['accum_len_string_shift']<end_pos)].index
+                            
+            for idx in coverd_idx:
+                start_pos_relative = max(start_pos - df.loc[idx,'accum_len_string_shift'],0)
+                end_pos_relative = min(end_pos - df.loc[idx,'accum_len_string_shift'],
+                                    df.loc[idx,'len_string']-1)
+                df = doc._highlight_basic(df,
                                         idx,
                                         int(start_pos_relative),
                                         int(end_pos_relative)+1,
