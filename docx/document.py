@@ -442,7 +442,8 @@ class Document(ElementProxy):
         start_pos -=1
         end_pos -=1
         doc = Document(self.element,self.part)
-        df = self._parse()
+        self._parse()
+        df = self._dataframe
         df['len_string'] = df['string'].apply(lambda x:len(x))
         df['accum_len_string'] = df['len_string'].cumsum()
         df['accum_len_string_shift'] = df['accum_len_string'].shift(1)
