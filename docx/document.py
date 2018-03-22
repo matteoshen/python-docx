@@ -434,16 +434,23 @@ class Document(ElementProxy):
         
         return df
 
-    def highlight(self, position_list, highlight_color):
+    def highlight(self, position_list, highlight_color, rmSC=False):
         """
         for each (start_pos, end_pos) in @position_list:
         highlight from @start_pos(included,0-starting-index) to 
                         @end_pos with color @highlight_color(included,0-starting-index)
+
+        @rmSC: default=True, 
+            if True position_list's postions reflex positions WITHOUT special characters
+        
         return Document object
         """
         doc = Document(self.element,self.part)
         self._parse()
         df = self._dataframe
+
+        if rmSC:
+            self._removeSpecailChar()
 
         df['len_string'] = df['string'].apply(lambda x:len(x))
         df['last_num'] = df['len_string'].cumsum() # last 1-staring num
@@ -458,8 +465,12 @@ class Document(ElementProxy):
             if pos[0]>pos[1]:
                 raise ValueError('end_pos <%i> should be BIGGER than start_pos <%i>'%(int(pos[1]),int(pos[0])))
             # 1-starting
-            start_num = pos[0] + 1
-            end_num = pos[1] + 1
+            if not rmSC:
+                start_num = pos[0] + 1
+                end_num = pos[1] + 1
+            else:
+                start_num = self._dataframe_without_sc.loc[pos[0],'index'] + 1
+                end_num = self._dataframe_without_sc.loc[pos[1],'index'] + 1
             coverd_idx = df[~(start_num > df['last_num']) & 
                             ~(end_num < df['first_num'])].index
                             
