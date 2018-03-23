@@ -33,14 +33,14 @@ class Document(ElementProxy):
     Use :func:`docx.Document` to open or create a document.
     """
 
-    __slots__ = ('_part', '__body','_dataframe','_dataframe_without_sc')
+    __slots__ = ('_part', '__body','_dataframe','_mapping_without_sc')
 
     def __init__(self, element, part):
         super(Document, self).__init__(element)
         self._part = part
         self.__body = None
         self._dataframe = None
-        self._dataframe_without_sc = None
+        self._mapping_without_sc = None
 
     def add_heading(self, text='', level=1):
         """
@@ -122,15 +122,15 @@ class Document(ElementProxy):
         return self._dataframe
 
     @property
-    def dataframe_without_sc(self):
+    def mapping_without_sc(self):
         """
-        return DataFrame containing block level info
-        WITHOUT Special Characters:
+        return DataFrame with mapping info on removing speical characters:
+        Special Characters:
             SPECIALCHARS_EN = r'~!@#$%^&*()_-+={}[]|\`:\"\'<>?/.,;'
             SPECIALCHARS_CH = r'·~！@#￥%……&*（）——+-={}|【】：“‘；：”’《》，。？、'
             SPECIAL_SEP = [' ','\n','\t','\u3000']
         """
-        return self._dataframe_without_sc
+        return self._mapping_without_sc
 
 
     @property
@@ -340,8 +340,8 @@ class Document(ElementProxy):
                                     (df.index>idx),
                                     'run_ID']
                 df.loc[(df['paragraph_ID']==df.loc[idx,'paragraph_ID'])&
-                    (df.index>idx),
-                    'run_ID'] = [i+1 for i in series_tmp]
+                        (df.index>idx),
+                        'run_ID'] = [i+1 for i in series_tmp]
             # mid
             r.insert_run_before(text=mid,
                                 style=r.style,
@@ -469,8 +469,8 @@ class Document(ElementProxy):
                 start_num = pos[0] + 1
                 end_num = pos[1] + 1
             else:
-                start_num = self._dataframe_without_sc.loc[pos[0],'index'] + 1
-                end_num = self._dataframe_without_sc.loc[pos[1],'index'] + 1
+                start_num = self._mapping_without_sc.loc[pos[0],'index'] + 1
+                end_num = self._mapping_without_sc.loc[pos[1],'index'] + 1
             coverd_idx = df[~(start_num > df['last_num']) & 
                             ~(end_num < df['first_num'])].index
                             
@@ -486,18 +486,18 @@ class Document(ElementProxy):
 
         return doc
 
-    def _removeSpecailChar(self,col_name='string'):
+    def _removeSpecailChar(self):
         """
         从一个self._dataframe中的指定col里移除特殊字符
         """
-        df_tmp = self._dataframe.copy()
-        df_tmp[col_name] = df_tmp[col_name].apply(rmSpecailChar)
-        df_tmp = df_tmp[df_tmp[col_name]!='']
-        self._dataframe_without_sc = df_tmp.reset_index()
-
-    def parse(self):
-        self._parse()
-        self._removeSpecailChar()
+        if self._dataframe is None:
+            self._parse()
+        str_tmp = self._dataframe['string'].sum()
+        df_tmp = DataFrame({'char':[c for c in str_tmp]},
+                            index=arange(len(str_tmp)))
+        df_tmp['char'] = df_tmp['char'].apply(rmSpecailChar)
+        df_tmp = df_tmp[df_tmp['char']!='']
+        self._mapping_without_sc = df_tmp.reset_index()
                 
 class _Body(BlockItemContainer):
     """
