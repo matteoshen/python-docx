@@ -33,8 +33,9 @@ class Document(ElementProxy):
     Use :func:`docx.Document` to open or create a document.
     """
 
-    __slots__ = ('_part', '__body','_dataframe','_mapping_without_sc', 
-                 '_block_list','_paragraph_or_table','_block_dataframe_list')
+    __slots__ = ('_part', '__body','_dataframe','_mapping_without_sc',
+                 '_block_list','_paragraph_or_table','_block_dataframe_list',
+                 '_fulltext','_fulltext_without_sc')
 
     def __init__(self, element, part):
         super(Document, self).__init__(element)
@@ -45,6 +46,8 @@ class Document(ElementProxy):
         self._block_list = []
         self._block_dataframe_list = []
         self._paragraph_or_table = []
+        self._fulltext = None
+        self._fulltext_without_sc = None
 
     def add_heading(self, text='', level=1):
         """
@@ -138,6 +141,25 @@ class Document(ElementProxy):
         return list of all blocks(paragraph or table) in the doc
         """
         return self._block_dataframe_list
+
+    @property
+    def fulltext(self):
+        """
+        return full text string of doc
+        """
+        if self._dataframe is None:
+            self.parse()
+        self._fulltext = self._dataframe['string'].sum()
+        return self._fulltext
+
+    @property
+    def fulltext_without_sc(self):
+        """
+        return full text string WITHOUT special characters of doc
+        """
+        self._removeSpecailChar()
+        self._fulltext_without_sc = self._mapping_without_sc['char'].sum()
+        return self._fulltext_without_sc
 
     @property
     def paragraph_or_table(self):
@@ -324,7 +346,7 @@ class Document(ElementProxy):
         df['block_ID'] = idx
         self._block_dataframe_list[idx] = df
 
-    def _parse(self):
+    def parse(self):
         """
         Parse a Document into pandas.DataFrame.
         if the document does NOT contain any tables, the return DataFrame's columns will be:
@@ -431,7 +453,7 @@ class Document(ElementProxy):
         return Document object
         """
         if self._dataframe is None:
-            self._parse()
+            self.parse()
         # do _removeSpecailChar if needed
         if rmSC:
             self._removeSpecailChar()
@@ -474,7 +496,7 @@ class Document(ElementProxy):
         从一个self._dataframe中的指定col里移除特殊字符
         """
         if self._dataframe is None:
-            self._parse()
+            self.parse()
         str_tmp = self._dataframe['string'].sum()
         df_tmp = DataFrame({'char':[c for c in str_tmp]},
                             index=arange(len(str_tmp)))
