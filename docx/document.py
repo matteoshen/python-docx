@@ -33,7 +33,8 @@ class Document(ElementProxy):
     Use :func:`docx.Document` to open or create a document.
     """
 
-    __slots__ = ('_part', '__body','_dataframe','_mapping_without_sc')
+    __slots__ = ('_part', '__body','_dataframe','_mapping_without_sc', 
+                 '_block_list','_paragraph_or_table','_block_dataframe_list')
 
     def __init__(self, element, part):
         super(Document, self).__init__(element)
@@ -41,6 +42,9 @@ class Document(ElementProxy):
         self.__body = None
         self._dataframe = None
         self._mapping_without_sc = None
+        self._block_list = []
+        self._block_dataframe_list = []
+        self._paragraph_or_table = []
 
     def add_heading(self, text='', level=1):
         """
@@ -120,6 +124,28 @@ class Document(ElementProxy):
         return DataFrame containing block level info
         """
         return self._dataframe
+
+    @property
+    def blocks(self):
+        """
+        return list of all blocks(paragraph or table) in the doc
+        """
+        return self._block_list
+
+    @property
+    def block_dataframe_list(self):
+        """
+        return list of all blocks(paragraph or table) in the doc
+        """
+        return self._block_dataframe_list
+
+    @property
+    def paragraph_or_table(self):
+        """
+        return list of with elements in {'p','t'} informing
+            if the n-th block is paragraph or table
+        """
+        return self._paragraph_or_table
 
     @property
     def mapping_without_sc(self):
@@ -228,7 +254,7 @@ class Document(ElementProxy):
             self.__body = _Body(self._element.body, self)
         return self.__body
 
-    def iter_block_items(self):
+    def _iter_block_items(self):
         """
         Yield each paragraph and table child within *parent*, in document order.
         Each returned value is an instance of either Table or Paragraph. *parent*
@@ -248,6 +274,55 @@ class Document(ElementProxy):
             elif isinstance(child, CT_Tbl):
                 yield Table(child, self)
 
+    def iter_block_items(self):
+        """
+        get self._block_list filled
+        """
+        for i in self._iter_block_items():
+            self._block_list.append(i)
+            self._block_dataframe_list.append(DataFrame())
+            if isinstance(i,Paragraph):
+                self._paragraph_or_table.append(1) # 1 means paragraph
+            else:
+                self._paragraph_or_table.append(0) # 0 means table
+
+    def _parse_block(self,idx):
+        """
+        Parse self._block_list[idx] into pandas.DataFrame.
+        """
+        block_tmp = self._block_list[idx]
+        blocktype = self._paragraph_or_table[idx]
+        paragraph_count = sum(self._paragraph_or_table[:idx+1])
+        table_count = idx + 1 - paragraph_count
+        df = DataFrame()
+        # paragraph
+        if blocktype==1:
+            l_runText = [r.text for r in block_tmp.runs]
+            l_runID = arange(len(l_runText))
+            df = DataFrame({'string':l_runText,
+                                'run_ID':l_runID},index=l_runID)
+            df['paragraph_ID'] = paragraph_count - 1 # 0-starting index 
+        # table
+        if blocktype==0:
+            row_count = 0
+            for row in block_tmp.rows:
+                cell_count = 0
+                for cell in row.cells:
+                    cell_para_count = 0
+                    for p in cell.paragraphs:
+                        l_runText = [r.text for r in p.runs]
+                        l_runID = arange(len(l_runText))            
+                        df = DataFrame({'string':l_runText,
+                                            'run_ID':l_runID},index=l_runID)
+                        df['table_ID'] = table_count - 1 # 0-starting index
+                        df['row_ID'] = row_count
+                        df['cell_ID'] = cell_count
+                        df['paragraph_ID'] = cell_para_count 
+                        cell_para_count += 1
+                    cell_count += 1
+                row_count += 1
+        df['block_ID'] = idx
+        self._block_dataframe_list[idx] = df
 
     def _parse(self):
         """
@@ -260,49 +335,16 @@ class Document(ElementProxy):
              'cell_ID','paragraph_ID','run_ID']
             each ID starts with 0
         """
-        iterator = self.iter_block_items()
-        block_count = 0
-        paragraph_count = 0
-        table_count = 0
-        df = DataFrame()
-        for i in iterator:
-            if isinstance(i,Paragraph):
-                l_runText = [r.text for r in i.runs]
-                l_runID = arange(len(l_runText))
-                df_tmp = DataFrame({'string':l_runText,
-                                    'run_ID':l_runID},index=l_runID)
-                df_tmp['block_ID'] = block_count
-                df_tmp['paragraph_ID'] = paragraph_count
-                df = concat([df,df_tmp],ignore_index=True)
-                paragraph_count += 1
-                block_count += 1
-            if isinstance(i,Table):
-                row_count = 0
-                for row in i.rows:
-                    cell_count = 0
-                    for cell in row.cells:
-                        cell_para_count = 0
-                        for p in cell.paragraphs:
-                            l_runText = [r.text for r in p.runs]
-                            l_runID = arange(len(l_runText))            
-                            df_tmp = DataFrame({'string':l_runText,
-                                                'run_ID':l_runID},index=l_runID)
-                            df_tmp['block_ID'] = block_count
-                            df_tmp['table_ID'] = table_count
-                            df_tmp['row_ID'] = row_count
-                            df_tmp['cell_ID'] = cell_count
-                            df_tmp['paragraph_ID'] = cell_para_count
-                            df = concat([df,df_tmp],ignore_index=True)
-                            cell_para_count += 1
-                        cell_count += 1
-                    row_count += 1
-                table_count += 1
-                block_count += 1
-        # set _dataframe
-        self._dataframe = df
+        self.iter_block_items()
+        for idx in arange(len(self._block_list)):
+            self._parse_block(idx)
+        self._dataframe = concat(self._block_dataframe_list, ignore_index=True)
+
+    def _reparse_block(self,idx):
+        self._parse_block(idx)
+        self._dataframe = concat(self._block_dataframe_list, ignore_index=True)
 
     def _highlight_basic(self,
-                        df,
                         idx,
                         start_pos_relative,
                         end_pos_relative,
@@ -311,6 +353,7 @@ class Document(ElementProxy):
         Inner method: HighLight doc with fixed
             DataFrame, idx, start_pos(relative), end_pos(relative) and fixed color
         """
+        df = self._dataframe
         # paragraph or table
         blocktype = None
         if 'table_ID' not in df.columns:
@@ -331,43 +374,21 @@ class Document(ElementProxy):
             if head>'':
                 r.insert_run_before(text= head,
                                     style=r.style,
-                                    bold=r.font.bold,
-                                    cs_bold=r.font.cs_bold,
-                                    italic=r.font.italic,
-                                    size=r.font.size,
-                                    underline=r.font.underline)
-                series_tmp = df.loc[(df['paragraph_ID']==df.loc[idx,'paragraph_ID'])&
-                                    (df.index>idx),
-                                    'run_ID']
-                df.loc[(df['paragraph_ID']==df.loc[idx,'paragraph_ID'])&
-                        (df.index>idx),
-                        'run_ID'] = [i+1 for i in series_tmp]
+                                    font_from_run=r)
             # mid
             r.insert_run_before(text=mid,
                                 style=r.style,
-                                highlight_color=highlight_color,                                    
-                                bold=r.font.bold,
-                                cs_bold=r.font.cs_bold,
-                                italic=r.font.italic,
-                                size=r.font.size,
-                                underline=r.font.underline)
+                                highlight_color=highlight_color,                                
+                                font_from_run=r)
             # tail
             if tail>'':
                 r.insert_run_before(text= tail,
                                     style=r.style,
-                                    bold=r.font.bold,
-                                    cs_bold=r.font.cs_bold,
-                                    italic=r.font.italic,
-                                    size=r.font.size,
-                                    underline=r.font.underline)
-                series_tmp = df.loc[(df['paragraph_ID']==df.loc[idx,'paragraph_ID'])&
-                                    (df.index>idx),
-                                    'run_ID']
-                df.loc[(df['paragraph_ID']==df.loc[idx,'paragraph_ID'])&
-                    (df.index>idx),
-                    'run_ID'] = [i+1 for i in series_tmp]
+                                    font_from_run=r)
             # delete run
             r.delete_run()
+            # arrange self._dataframe
+            self._reparse_block(df.loc[idx,'block_ID'])
         # table
         if blocktype=='table':
             table = self.tables[int(df.loc[idx,'table_ID'])]
@@ -382,57 +403,21 @@ class Document(ElementProxy):
             if head>'':
                 r.insert_run_before(text= head,
                                     style=r.style,
-                                    bold=r.font.bold,
-                                    cs_bold=r.font.cs_bold,
-                                    italic=r.font.italic,
-                                    size=r.font.size,
-                                    underline=r.font.underline)
-                series_tmp = df.loc[(df['table_ID']==df.loc[idx,'table_ID'])&
-                                    (df['row_ID']==df.loc[idx,'row_ID'])&
-                                    (df['cell_ID']==df.loc[idx,'cell_ID'])&
-                                    (df['paragraph_ID']==df.loc[idx,'paragraph_ID'])&
-                                    (df.index>idx),
-                                    'run_ID']
-                df.loc[(df['table_ID']==df.loc[idx,'table_ID'])&
-                        (df['row_ID']==df.loc[idx,'row_ID'])&
-                        (df['cell_ID']==df.loc[idx,'cell_ID'])&
-                        (df['paragraph_ID']==df.loc[idx,'paragraph_ID'])&
-                        (df.index>idx),
-                        'run_ID']= [i+1 for i in series_tmp]
+                                    font_from_run=r)
             # mid
             r.insert_run_before(text=mid,
                                 style=r.style,
-                                highlight_color=highlight_color,                                    
-                                bold=r.font.bold,
-                                cs_bold=r.font.cs_bold,
-                                italic=r.font.italic,
-                                size=r.font.size,
-                                underline=r.font.underline)
+                                highlight_color=highlight_color,                                
+                                font_from_run=r)
             # tail
             if tail>'':
                 r.insert_run_before(text= tail,
                                     style=r.style,
-                                    bold=r.font.bold,
-                                    cs_bold=r.font.cs_bold,
-                                    italic=r.font.italic,
-                                    size=r.font.size,
-                                    underline=r.font.underline)
-                series_tmp = df.loc[(df['table_ID']==df.loc[idx,'table_ID'])&
-                                    (df['row_ID']==df.loc[idx,'row_ID'])&
-                                    (df['cell_ID']==df.loc[idx,'cell_ID'])&
-                                    (df['paragraph_ID']==df.loc[idx,'paragraph_ID'])&
-                                    (df.index>idx),
-                                    'run_ID']
-                df.loc[(df['table_ID']==df.loc[idx,'table_ID'])&
-                        (df['row_ID']==df.loc[idx,'row_ID'])&
-                        (df['cell_ID']==df.loc[idx,'cell_ID'])&
-                        (df['paragraph_ID']==df.loc[idx,'paragraph_ID'])&
-                        (df.index>idx),
-                        'run_ID']= [i+1 for i in series_tmp]
+                                    font_from_run=r)
             # delete run
             r.delete_run()
-        
-        return df
+            # arrange self._dataframe
+            self._reparse_block(df.loc[idx,'block_ID'])
 
     def highlight(self, position_list, highlight_color, rmSC=False):
         """
@@ -445,25 +430,26 @@ class Document(ElementProxy):
         
         return Document object
         """
-        doc = Document(self.element,self.part)
-        self._parse()
-        df = self._dataframe
-
+        if self._dataframe is None:
+            self._parse()
+        # do _removeSpecailChar if needed
         if rmSC:
             self._removeSpecailChar()
-
-        df['len_string'] = df['string'].apply(lambda x:len(x))
-        df['last_num'] = df['len_string'].cumsum() # last 1-staring num
-        df['first_num'] = df['last_num'].shift(1) + 1 # first 1-starting num
-
-        if df.shape[0]>0:
-            df.loc[0,'first_num'] = 1
 
         for pos in position_list:
             if nan in pos:
                 continue
             if pos[0]>pos[1]:
                 raise ValueError('end_pos <%i> should be BIGGER than start_pos <%i>'%(int(pos[1]),int(pos[0])))
+
+            df = self._dataframe.copy()
+            df['len_string'] = df['string'].apply(lambda x:len(x))
+            df['last_num'] = df['len_string'].cumsum() # last 1-staring num
+            df['first_num'] = df['last_num'].shift(1) + 1 # first 1-starting num
+
+            if df.shape[0]>0:
+                df.loc[0,'first_num'] = 1
+
             # 1-starting
             if not rmSC:
                 start_num = pos[0] + 1
@@ -478,13 +464,10 @@ class Document(ElementProxy):
                 # 0-starting
                 start_pos_relative = max(start_num - df.loc[idx,'first_num'],0)
                 end_pos_relative = max(end_num - df.loc[idx,'first_num'],0)
-                df = doc._highlight_basic(df,
-                                        idx,
+                self._highlight_basic(idx,
                                         int(start_pos_relative),
                                         int(end_pos_relative) + 1,
                                         highlight_color)
-
-        return doc
 
     def _removeSpecailChar(self):
         """

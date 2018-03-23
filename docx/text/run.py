@@ -182,14 +182,16 @@ class Run(Parented):
         self.font.underline = value
 
     def insert_run_before(self, text=None, style=None, highlight_color=None,
-                            bold=None, italic=None, cs_bold=None,
-                            underline=None, size=None):
+                            font_from_run=None, bold=None, italic=None, 
+                            cs_bold=None, underline=None, size=None):
         """
         Return a newly created run, inserted directly before this
         run. If *text* is supplied, the new run contains that
         text. If *style* is provided, that style is assigned
         to the new run. If *highlight_color* is provided, that 
-        highlight_color is assigned to the new run.
+        highlight_color is assigned to the new run. If *font_from_run* is
+        provided(must be run object), th new run inherits its font's:
+            bold, italic, cs_blod, underline, szie
         """
         run = self._insert_run_before()
         if text:
@@ -198,14 +200,21 @@ class Run(Parented):
             run.style = style
         if highlight_color:
             run.font.highlight_color = highlight_color
-        if italic:
-            run.font.italic = italic
-        if underline:
-            run.font.underline = underline
-        if size:
-            run.font.size = size   
-        if cs_bold:
-            run.font.cs_bold = cs_bold                                                
+        if font_from_run is None:
+            if italic:
+                run.font.italic = italic
+            if underline:
+                run.font.underline = underline
+            if size:
+                run.font.size = size   
+            if cs_bold:
+                run.font.cs_bold = cs_bold        
+        else:
+            run.font.italic = font_from_run.font.italic
+            run.font.underline = font_from_run.font.underline
+            run.font.size = font_from_run.font.size
+            run.font.cs_bold = font_from_run.font.cs_bold
+                        
         return run
 
     def _insert_run_before(self):
